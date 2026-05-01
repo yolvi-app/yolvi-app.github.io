@@ -1,15 +1,16 @@
 {
   "name": "Yolvi",
   "short_name": "Yolvi",
-  "start_url": "/",
+  "start_url": "/?v=5",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "icon.png?v=5",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
