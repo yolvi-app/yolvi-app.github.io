@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#6366f1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Yolvi — AI Study Tutor. Turn anything into explanations, quizzes and flashcards." />
+  <title>Yolvi — AI Study Tutor</title>
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Yolvi%22%2C%22short_name%22%3A%22Yolvi%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230a0a14%22%2C%22theme_color%22%3A%22%236366f1%22%7D" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><defs><linearGradient id='p' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23a5b4fc'/><stop offset='100%25' stop-color='%236366f1'/></linearGradient><radialGradient id='s' cx='50%25' cy='50%25' r='50%25'><stop offset='0%25' stop-color='%23fde68a'/><stop offset='60%25' stop-color='%23fbbf24'/><stop offset='100%25' stop-color='%23f59e0b'/></radialGradient></defs><rect width='40' height='40' fill='%230a0a14' rx='9'/><g stroke='url(%23p)' stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round' fill='none'><path d='M11.5 11.5 L20 20'/><path d='M28.5 11.5 L20 20'/><path d='M20 20 L20 30'/></g><circle cx='20' cy='20' r='3.6' fill='url(%23s)'/></svg>" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { width: 100%; overflow: hidden; background: #0a0a14; }
+    /* Use dynamic viewport height (dvh) on mobile — accounts for browser chrome bar */
+    html, body { height: 100vh; height: 100dvh; }
+    #root { height: 100vh; height: 100dvh; }
+    body { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+    /* Safe area for notch / status bar on mobile */
+    .safe-top { padding-top: env(safe-area-inset-top); }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+const { useState, useRef, useEffect } = React;
+
+
+// ═══════════════════════════════════════════════════════════════
+// YOLVI LEARN — AI Study Tutor
+// Tagline: "Turn anything into explanations, quizzes & flashcards"
+// Core: Structured study modes (not just chat), learning loop,
+//       conversion-optimized App Store strategy
+// ═══════════════════════════════════════════════════════════════
+
+const APP_NAME = "Yolvi";
+const APP_TAGLINE = "AI Study Tutor";
+
+// ── Mode-specific system prompts ──────────────────────────────
+const SYSTEM_BASE = `You are Yolvi, a friendly AI study tutor that helps students truly understand topics. Be clear, warm, and encouraging. Never just dump information — teach.`;
+
+const SYSTEM_EXPLAIN = SYSTEM_BASE + `
+
+When a user asks for an explanation, structure your response EXACTLY like this in markdown:
+
+## Simple explanation
+2-3 sentences in plain everyday language.
+
+## Real example
+A concrete relatable example.
+
+## Why it matters
+Why this concept is useful or important.
+
+## Quick check
+One short question to verify understanding.
+
+Always use this exact structure. Be thorough but never bloated.`;
+
+const SYSTEM_QUIZ_TEMPLATE = `You make multiple-choice quizzes. Output JSON only.
+
+The JSON has this exact shape:
+{"topic":"...", "questions":[{"q":"...", "options":["A","B","C","D"], "correct":0, "explain":"..."}]}
+
+You generate exactly {COUNT} questions.
+You match the user's language.
+You include the "questions" key. You NEVER include a "cards" key.
+
+DEFAULT: just generate the quiz. Be helpful — if you can reasonably guess what the user means, just do it.
+
+ONLY ask for clarification when ALL of these are true:
+1) The user's input is a single ambiguous word with multiple very different meanings (e.g. "Mercury" = planet/element/god; "Apple" = fruit/company; bare "Škoda" = car/club/word)
+2) Picking the wrong meaning would make the quiz useless
+3) The input is NOT already specific (e.g. "Apple Inc.", "Škoda Auto", "WW2 causes", "Spanish verbs", "Photosynthesis" — these are all specific enough, never ask about them)
+
+When you DO ask, reply with this JSON:
+{"needsClarification":true, "message":"Question in user's language asking what they meant.", "suggestions":["topic 1","topic 2","topic 3"]}
+
+Two-or-more-word topics are almost always specific enough — generate the quiz.
+
+Output JSON only. No prose, no markdown, no code fences.`;
+
+const SYSTEM_FLASHCARDS_TEMPLATE = `You make flashcards. Output JSON only.
+
+The JSON has this exact shape:
+{"topic":"...", "cards":[{"front":"term or question", "back":"definition or answer"}]}
+
+You generate exactly {COUNT} flashcards.
+You match the user's language.
+You include the "cards" key. You NEVER include a "questions" key.
+Each card has only "front" and "back". No options, no answers list, no multiple choice.
+
+DEFAULT: just generate the flashcards. Be helpful — if you can reasonably guess what the user means, just do it.
+
+ONLY ask for clarification when ALL of these are true:
+1) The user's input is a single ambiguous word with multiple very different meanings (e.g. "Mercury", bare "Škoda")
+2) Picking the wrong meaning would make the flashcards useless
+3) The input is NOT already specific (e.g. "French food vocabulary", "Photosynthesis steps", "Škoda Auto" — these are all specific enough, never ask about them)
+
+When you DO ask, reply with this JSON:
+{"needsClarification":true, "message":"Question in user's language asking what they meant.", "suggestions":["topic 1","topic 2","topic 3"]}
+
+Two-or-more-word topics are almost always specific enough — generate the flashcards.
+
+Output JSON only. No prose, no markdown, no code fences.`;
+
+const SYSTEM_SUMMARIZE = SYSTEM_BASE + `
+
+When given notes or a topic to summarize, structure response EXACTLY like this:
+
+## Key points
+- Bullet 1
+- Bullet 2
+- ...
+
+## Important terms
+- **Term**: short definition
+- **Term**: short definition
+
+## Possible test questions
+1. Question
+2. Question
+3. Question`;
+
+const SYSTEM_HOMEWORK = SYSTEM_BASE + `
+
+You help with homework. NEVER just give the answer. Always:
+1. Explain the concept being tested
+2. Walk through the solution step-by-step
+3. Show the final answer at the end
+4. End with: "Now try a similar problem yourself!"
+
+This teaches the student rather than letting them copy.`;
+
+// ── Utilities ─────────────────────────────────────────────────
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function formatDate(ts) {
+  if (!ts) return "recently";
+  const d = new Date(ts);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+function escHtml(t) {
+  return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Robust JSON extractor — pulls out the FIRST valid JSON object from a possibly-messy AI reply.
+// Handles markdown code fences, leading/trailing prose, and nested braces inside strings.
+function extractJson(text) {
+  if (!text) return null;
+  // 1) Strip code fences first.
+  let s = String(text).replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  // 2) Try a straight parse — fastest path.
+  try { return JSON.parse(s); } catch(e) {}
+  // 3) Walk the string and find a balanced { ... } block, ignoring braces inside strings.
+  const start = s.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) { esc = false; }
+      else if (c === "\\") { esc = true; }
+      else if (c === "\"") { inStr = false; }
+    } else {
+      if (c === "\"") inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          const candidate = s.slice(start, i + 1);
+          try { return JSON.parse(candidate); } catch(_) { return null; }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function renderMd(text) {
+  if (!text) return "";
+  let html = escHtml(text)
+    .replace(/`([^`\n]+)`/g, `<code style="background:rgba(99,102,241,0.12);padding:2px 7px;border-radius:5px;font-size:12.5px;font-family:'JetBrains Mono',monospace;color:#a5b4fc;">$1</code>`)
+    .replace(/\*\*(.*?)\*\*/g, "<strong style='color:#fff;font-weight:600;'>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em style='color:#d1d5db;'>$1</em>")
+    .replace(/^## (.+)$/gm, `<div style="font-size:14px;font-weight:600;color:#818cf8;margin:14px 0 6px;letter-spacing:-0.01em;">$1</div>`)
+    .replace(/^# (.+)$/gm, `<div style="font-size:16px;font-weight:700;color:#fff;margin:14px 0 8px;">$1</div>`)
+    .replace(/^\d+\.\s+(.+)$/gm, `<div style="display:flex;gap:10px;margin:5px 0;"><span style="color:#818cf8;min-width:18px;font-size:12px;font-weight:600;">•</span><span>$1</span></div>`)
+    .replace(/^[-*]\s+(.+)$/gm, `<div style="display:flex;gap:10px;margin:4px 0;"><span style="color:#818cf8;min-width:18px;font-size:14px;line-height:1.3;">·</span><span>$1</span></div>`)
+    .replace(/\n\n/g, `<div style="height:8px;"></div>`)
+    .replace(/\n/g, "<br/>");
+  return html;
+}
+
+// ── Logo: Yolvi brand mark (Y + spark + orbital ring) ─────────
+// Geometric Y carrying a warm spark — the "aha!" moment of understanding.
+// Tuned to render crisply from 16 px favicon up to 1024 px app icon.
+const Logo = ({ size = 36, glow = false }) => {
+  // Each Logo instance gets unique gradient IDs so multiple logos
+  // on the same page don't share defs.
+  const uid = useRef("ylv" + Math.random().toString(36).slice(2, 8)).current;
+  return (
+    <div style={{ position: "relative", display: "inline-flex" }}>
+      <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+        <defs>
+          <linearGradient id={`${uid}-p`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#a5b4fc"/>
+            <stop offset="100%" stopColor="#6366f1"/>
+          </linearGradient>
+          <radialGradient id={`${uid}-s`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fde68a"/>
+            <stop offset="60%" stopColor="#fbbf24"/>
+            <stop offset="100%" stopColor="#f59e0b"/>
+          </radialGradient>
+          <linearGradient id={`${uid}-h`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32"/>
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        {/* Outer aura ring — knowledge orbit */}
+        <circle cx="20" cy="20" r="17.5" stroke={`url(#${uid}-p)`} strokeWidth="1.4" fill="none" opacity="0.28"/>
+        {/* Bold Y mark */}
+        <g stroke={`url(#${uid}-p)`} strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <path d="M11.5 11.5 L20 20"/>
+          <path d="M28.5 11.5 L20 20"/>
+          <path d="M20 20 L20 30"/>
+        </g>
+        {/* Subtle highlight on upper Y arms */}
+        <g stroke={`url(#${uid}-h)`} strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.55">
+          <path d="M12 11.7 L19.6 19.4"/>
+          <path d="M28 11.7 L20.4 19.4"/>
+        </g>
+        {/* Center spark — moment of understanding */}
+        <circle cx="20" cy="20" r="3.6" fill={`url(#${uid}-s)`}/>
+        <circle cx="20" cy="20" r="3.6" fill="none" stroke="#ffffff" strokeWidth="0.4" opacity="0.7"/>
+      </svg>
+      {glow && <div style={{ position:"absolute",inset:-8,background:"radial-gradient(circle,rgba(99,102,241,0.5) 0%,transparent 70%)",borderRadius:"50%",pointerEvents:"none",filter:"blur(8px)" }}/>}
+    </div>
+  );
+};
+
+const Dots = ({ color = "#818cf8" }) => (
+  <div style={{ display:"flex",gap:5,padding:"4px 0" }}>
+    {[0,1,2].map(i=><span key={i} style={{ width:7,height:7,borderRadius:"50%",background:color,display:"inline-block",opacity:0.7,animation:"ybounce 1.2s infinite",animationDelay:`${i*0.2}s` }}/>)}
+  </div>
+);
+
+// ════════════════════════════════════════════════════════════════
+// ONBOARDING — Sells the study use case
+// ════════════════════════════════════════════════════════════════
+// AUTH SCREEN — Honest local profile (no password, demo-friendly)
+// ════════════════════════════════════════════════════════════════
+function AuthScreen({ onAuth, onGuest }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = () => {
+    setErr("");
+    if (!name.trim()) { setErr("Please enter your name."); return; }
+    if (!email.includes("@") || !email.includes(".")) { setErr("Please enter a valid email."); return; }
+    setLoading(true);
+    try {
+      const userKey = `yolvi:user:${email.toLowerCase()}`;
+      // Restore existing local profile or create a fresh one
+      let user;
+      try {
+        const existing = localStorage.getItem(userKey);
+        if (existing) {
+          user = JSON.parse(existing);
+          // Migration: remove legacy password field if present
+          let migrated = false;
+          if (user && "password" in user) { delete user.password; migrated = true; }
+          if (user.name !== name.trim()) { user.name = name.trim(); migrated = true; }
+          if (migrated) {
+            try { localStorage.setItem(userKey, JSON.stringify(user)); } catch(e) {}
+          }
+        }
+      } catch(e) {}
+      if (!user) {
+        user = { name: name.trim(), email: email.toLowerCase(), createdAt: Date.now() };
+        localStorage.setItem(userKey, JSON.stringify(user));
+      }
+      localStorage.setItem("yolvi:session", email.toLowerCase());
+      onAuth(user);
+    } catch(e) { setErr("Something went wrong. Try again."); }
+    setLoading(false);
+  };
+
+  const continueAsGuest = () => {
+    onGuest();
+  };
+
+  return (
+    <div style={{ position:"fixed",inset:0,background:"linear-gradient(180deg,#0a0a14 0%,#13132a 100%)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'Inter',sans-serif",overflow:"auto",paddingTop:"max(24px, env(safe-area-inset-top))",paddingBottom:"max(24px, env(safe-area-inset-bottom))" }}>
+      <style>{`
+        .y-input{background:rgba(255,255,255,0.04)!important;border:1.5px solid rgba(255,255,255,0.08)!important;border-radius:12px!important;padding:14px 16px!important;color:#fff!important;font-family:'Inter',sans-serif!important;font-size:14px!important;font-weight:400!important;width:100%!important;transition:all 0.2s!important;box-sizing:border-box!important;}
+        .y-input:focus{outline:none!important;border-color:#6366f1!important;background:rgba(99,102,241,0.05)!important;}
+        .y-input::placeholder{color:#4b5563!important;}
+      `}</style>
+      <div style={{ position:"absolute",top:"15%",left:"50%",transform:"translateX(-50%)",width:400,height:300,background:"radial-gradient(ellipse,rgba(99,102,241,0.12) 0%,transparent 70%)",pointerEvents:"none",filter:"blur(40px)" }}/>
+
+      <div style={{ maxWidth:380,width:"100%",position:"relative",zIndex:1 }}>
+        <div style={{ textAlign:"center",marginBottom:32 }}>
+          <div style={{ marginBottom:14 }}><Logo size={50} glow/></div>
+          <div style={{ fontSize:26,fontWeight:700,color:"#fff",letterSpacing:"-0.02em",marginBottom:6 }}>{APP_NAME}</div>
+          <div style={{ fontSize:13,color:"#9ca3af" }}>{APP_TAGLINE}</div>
+        </div>
+
+        <div style={{ marginBottom:20,textAlign:"center" }}>
+          <div style={{ fontSize:22,fontWeight:700,color:"#fff",marginBottom:6,letterSpacing:"-0.02em" }}>
+            Create your profile
+          </div>
+          <div style={{ fontSize:13,color:"#9ca3af",lineHeight:1.5 }}>
+            Stored locally on your device.<br/>No account, no password — just learning.
+          </div>
+        </div>
+
+        <div style={{ display:"flex",flexDirection:"column",gap:11,marginBottom:14 }}>
+          <input className="y-input" placeholder="Your name" value={name} onChange={e=>{setName(e.target.value); setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          <input className="y-input" type="email" placeholder="Email address" value={email} onChange={e=>{setEmail(e.target.value); setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+        </div>
+
+        {err && <div style={{ marginBottom:14,padding:"10px 14px",fontSize:12,color:"#fca5a5",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,textAlign:"center" }}>{err}</div>}
+
+        <button onClick={submit} disabled={loading} style={{
+          width:"100%",padding:"14px",
+          background: loading ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#a5b4fc,#6366f1)",
+          border:"none",borderRadius:12,color:"#fff",fontSize:14,fontWeight:600,
+          cursor: loading ? "default" : "pointer",
+          boxShadow: loading ? "none" : "0 8px 20px rgba(99,102,241,0.3)",
+          marginBottom:10
+        }}>
+          {loading ? "Please wait…" : "Continue"}
+        </button>
+
+        <button onClick={continueAsGuest} disabled={loading} style={{
+          width:"100%",padding:"11px",
+          background:"transparent",
+          border:"none",
+          color:"#6b7280",
+          fontFamily:"'Inter',sans-serif",
+          fontSize:12.5,fontWeight:500,
+          cursor: loading ? "default" : "pointer",
+          marginBottom:14
+        }}>
+          Try without profile
+        </button>
+
+        <div style={{ textAlign:"center",fontSize:10.5,color:"#4b5563",lineHeight:1.7 }}>
+          Your profile and study sets stay on this device.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// SAVE STUDY SET BUTTON
+// ════════════════════════════════════════════════════════════════
+function SaveSetButton({ topic, mode, data, onSave }) {
+  const [justSaved, setJustSaved] = useState(false);
+  const handleSave = () => {
+    if (justSaved) return;
+    onSave({
+      id: genId(),
+      topic: topic.length > 40 ? topic.slice(0,40)+"…" : topic,
+      mode,
+      data,
+      savedAt: Date.now()
+    });
+    setJustSaved(true);
+  };
+  if (justSaved) {
+    return (
+      <div style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"rgba(34,197,94,0.08)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:8,fontSize:11,color:"#86efac",fontWeight:600,fontFamily:"'Inter',sans-serif" }}>
+        <span>✓</span> Saved to study sets
+      </div>
+    );
+  }
+  return (
+    <button onClick={handleSave} style={{ display:"flex",alignItems:"center",gap:6,padding:"7px 14px",background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:8,fontSize:11,color:"#a5b4fc",fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif",transition:"all 0.15s" }}
+      onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.15)"}
+      onMouseLeave={e=>e.currentTarget.style.background="rgba(99,102,241,0.08)"}>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+      Save to study sets
+    </button>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// GUEST UPGRADE MODAL — prompts guest to create a local profile
+// when they try to save a study set
+// ════════════════════════════════════════════════════════════════
+function GuestUpgradeModal({ onClose, onCreate }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = () => {
+    setErr("");
+    if (!name.trim()) { setErr("Please enter your name."); return; }
+    if (!email.includes("@") || !email.includes(".")) { setErr("Please enter a valid email."); return; }
+    setLoading(true);
+    try {
+      const userKey = `yolvi:user:${email.toLowerCase()}`;
+      let user;
+      try {
+        const existing = localStorage.getItem(userKey);
+        if (existing) {
+          user = JSON.parse(existing);
+          let migrated = false;
+          if (user && "password" in user) { delete user.password; migrated = true; }
+          if (user.name !== name.trim()) { user.name = name.trim(); migrated = true; }
+          if (migrated) {
+            try { localStorage.setItem(userKey, JSON.stringify(user)); } catch(e) {}
+          }
+        }
+      } catch(e) {}
+      if (!user) {
+        user = { name: name.trim(), email: email.toLowerCase(), createdAt: Date.now() };
+        localStorage.setItem(userKey, JSON.stringify(user));
+      }
+      localStorage.setItem("yolvi:session", email.toLowerCase());
+      onCreate(user);
+    } catch(e) {
+      setErr("Something went wrong. Try again.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",zIndex:90,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'Inter',sans-serif",animation:"yfadeIn 0.2s ease",overflow:"auto" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ width:"100%",maxWidth:380,background:"linear-gradient(180deg,#1a1a35,#0f0f24)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:20,padding:"28px 24px",position:"relative",boxShadow:"0 20px 60px rgba(0,0,0,0.6),0 0 60px rgba(99,102,241,0.15)" }}>
+        <style>{`
+          .y-gu-input{background:rgba(255,255,255,0.04)!important;border:1.5px solid rgba(255,255,255,0.08)!important;border-radius:11px!important;padding:12px 14px!important;color:#fff!important;font-family:'Inter',sans-serif!important;font-size:13.5px!important;font-weight:400!important;width:100%!important;transition:all 0.2s!important;box-sizing:border-box!important;}
+          .y-gu-input:focus{outline:none!important;border-color:#6366f1!important;background:rgba(99,102,241,0.05)!important;}
+          .y-gu-input::placeholder{color:#4b5563!important;}
+        `}</style>
+        <button onClick={onClose} aria-label="Close" style={{ position:"absolute",top:14,right:14,width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"none",color:"#9ca3af",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center" }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+        </button>
+
+        <div style={{ textAlign:"center",marginBottom:18 }}>
+          <div style={{ fontSize:36,marginBottom:10 }}>💾</div>
+          <div style={{ fontSize:18,fontWeight:700,color:"#fff",marginBottom:6,letterSpacing:"-0.02em" }}>
+            Create a free local profile to save this study set.
+          </div>
+          <div style={{ fontSize:12,color:"#9ca3af",lineHeight:1.5 }}>
+            Stored locally on your device.<br/>No account, no password.
+          </div>
+        </div>
+
+        <div style={{ display:"flex",flexDirection:"column",gap:10,marginBottom:14 }}>
+          <input className="y-gu-input" placeholder="Your name" value={name} onChange={e=>{setName(e.target.value); setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+          <input className="y-gu-input" type="email" placeholder="Email address" value={email} onChange={e=>{setEmail(e.target.value); setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+        </div>
+
+        {err && <div style={{ marginBottom:12,padding:"9px 13px",fontSize:11.5,color:"#fca5a5",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:9,textAlign:"center" }}>{err}</div>}
+
+        <button onClick={submit} disabled={loading} style={{
+          width:"100%",padding:"13px",
+          background: loading ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#a5b4fc,#6366f1)",
+          border:"none",borderRadius:11,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13.5,fontWeight:700,
+          cursor: loading ? "default" : "pointer",
+          boxShadow: loading ? "none" : "0 6px 18px rgba(99,102,241,0.32)",
+          marginBottom:8
+        }}>
+          {loading ? "Please wait…" : "Create profile & save"}
+        </button>
+        <button onClick={onClose} style={{ width:"100%",padding:"9px",background:"transparent",border:"none",color:"#6b7280",fontFamily:"'Inter',sans-serif",fontSize:11.5,cursor:"pointer" }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// CLARIFY VIEW — shown when AI needs more specific topic
+// ════════════════════════════════════════════════════════════════
+function ClarifyView({ data, onPick }) {
+  return (
+    <div style={{ padding:"16px 18px" }}>
+      <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10,fontSize:11,letterSpacing:"0.1em",fontWeight:700,color:"#fbbf24",textTransform:"uppercase" }}>
+        <span>💡</span> Need a bit more detail
+      </div>
+      <div style={{ fontSize:14,color:"#e5e7eb",lineHeight:1.6,marginBottom:14 }}>
+        {data.message || "Could you be more specific about the topic?"}
+      </div>
+      {Array.isArray(data.suggestions) && data.suggestions.length > 0 && (
+        <div style={{ display:"flex",flexDirection:"column",gap:7 }}>
+          {data.suggestions.map((s, i) => (
+            <button key={i} onClick={() => onPick(s)} style={{
+              padding:"11px 14px",
+              background:"rgba(99,102,241,0.06)",
+              border:"1px solid rgba(99,102,241,0.22)",
+              borderRadius:11,
+              color:"#a5b4fc",
+              fontFamily:"'Inter',sans-serif",
+              fontSize:13,
+              fontWeight:500,
+              textAlign:"left",
+              cursor:"pointer",
+              transition:"all 0.15s",
+              display:"flex",
+              alignItems:"center",
+              justifyContent:"space-between",
+              gap:10
+            }}
+              onMouseEnter={e=>{ e.currentTarget.style.background="rgba(99,102,241,0.14)"; e.currentTarget.style.borderColor="rgba(99,102,241,0.4)"; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background="rgba(99,102,241,0.06)"; e.currentTarget.style.borderColor="rgba(99,102,241,0.22)"; }}>
+              <span style={{ flex:1 }}>{s}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{ flexShrink:0,opacity:0.6 }}><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop:12,fontSize:11,color:"#6b7280" }}>
+        Tap a suggestion to start, or type a more specific topic below.
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// QUIZ MODE — interactive 5-question quiz with scoring
+// ════════════════════════════════════════════════════════════════
+function QuizView({ data, onClose }) {
+  const [idx, setIdx] = useState(0);
+  const [picked, setPicked] = useState(null);
+  const [score, setScore] = useState(0);
+  const [done, setDone] = useState(false);
+
+  const q = data.questions[idx];
+
+  const pick = (i) => {
+    if (picked !== null) return;
+    setPicked(i);
+    if (i === q.correct) setScore(s => s + 1);
+  };
+
+  const next = () => {
+    if (idx + 1 < data.questions.length) {
+      setIdx(idx + 1);
+      setPicked(null);
+    } else {
+      setDone(true);
+    }
+  };
+
+  if (done) {
+    const pct = Math.round((score / data.questions.length) * 100);
+    return (
+      <div style={{ padding:"24px 20px",textAlign:"center" }}>
+        <div style={{ fontSize:14,color:"#818cf8",fontWeight:600,letterSpacing:"0.08em",marginBottom:18,textTransform:"uppercase" }}>Quiz complete</div>
+        <div style={{ fontSize:48,fontWeight:800,color:"#fff",marginBottom:6 }}>{score}/{data.questions.length}</div>
+        <div style={{ fontSize:14,color:"#9ca3af",marginBottom:22 }}>{pct >= 80 ? "🎉 Excellent!" : pct >= 60 ? "👍 Good effort!" : "💪 Keep practicing!"}</div>
+        <div style={{ display:"flex",gap:8,justifyContent:"center" }}>
+          <button onClick={()=>{setIdx(0);setPicked(null);setScore(0);setDone(false);}} style={{ padding:"10px 18px",background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,color:"#a5b4fc",fontSize:12,fontWeight:600,cursor:"pointer" }}>Try Again</button>
+          <button onClick={onClose} style={{ padding:"10px 18px",background:"linear-gradient(135deg,#a5b4fc,#6366f1)",border:"none",borderRadius:10,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer" }}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding:"20px" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+        <div style={{ fontSize:11,color:"#9ca3af",letterSpacing:"0.08em",fontWeight:600 }}>Question {idx + 1} / {data.questions.length}</div>
+        <div style={{ fontSize:11,color:"#818cf8",fontWeight:600 }}>Score: {score}</div>
+      </div>
+      {/* Progress bar */}
+      <div style={{ height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,marginBottom:18,overflow:"hidden" }}>
+        <div style={{ height:"100%",background:"linear-gradient(90deg,#a5b4fc,#6366f1)",width:`${((idx) / data.questions.length) * 100}%`,transition:"width 0.3s" }}/>
+      </div>
+
+      <div style={{ fontSize:16,color:"#fff",fontWeight:500,marginBottom:18,lineHeight:1.5 }}>{q.q}</div>
+
+      <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+        {q.options.map((opt, i) => {
+          const isCorrect = i === q.correct;
+          const isPicked = i === picked;
+          let bg = "rgba(255,255,255,0.03)", border = "rgba(255,255,255,0.08)", color = "#d1d5db";
+          if (picked !== null) {
+            if (isCorrect) { bg = "rgba(34,197,94,0.12)"; border = "#22c55e"; color = "#86efac"; }
+            else if (isPicked) { bg = "rgba(239,68,68,0.12)"; border = "#ef4444"; color = "#fca5a5"; }
+          }
+          return (
+            <button key={i} onClick={()=>pick(i)} disabled={picked !== null} style={{
+              padding:"13px 16px",background:bg,border:`1.5px solid ${border}`,borderRadius:12,color,
+              fontSize:13.5,fontWeight:500,cursor:picked!==null?"default":"pointer",textAlign:"left",
+              transition:"all 0.2s",fontFamily:"'Inter',sans-serif",display:"flex",alignItems:"center",gap:10
+            }}>
+              <span style={{ width:22,height:22,borderRadius:"50%",background:"rgba(255,255,255,0.06)",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,flexShrink:0 }}>{String.fromCharCode(65 + i)}</span>
+              <span style={{ flex:1 }}>{opt}</span>
+              {picked !== null && isCorrect && <span style={{ color:"#22c55e",fontSize:16 }}>✓</span>}
+              {picked !== null && isPicked && !isCorrect && <span style={{ color:"#ef4444",fontSize:16 }}>✗</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {picked !== null && (
+        <div style={{ marginTop:14,padding:"12px 14px",background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:10,fontSize:12.5,color:"#c7d2fe",lineHeight:1.6 }}>
+          💡 {q.explain}
+        </div>
+      )}
+
+      {picked !== null && (
+        <button onClick={next} style={{ marginTop:14,width:"100%",padding:"12px",background:"linear-gradient(135deg,#a5b4fc,#6366f1)",border:"none",borderRadius:10,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer" }}>
+          {idx + 1 < data.questions.length ? "Next Question →" : "Finish Quiz"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// FLASHCARDS MODE — flippable cards
+// ════════════════════════════════════════════════════════════════
+function FlashcardsView({ data, onClose }) {
+  const [idx, setIdx] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const c = data.cards[idx];
+
+  const next = () => { if (idx + 1 < data.cards.length) { setIdx(idx + 1); setFlipped(false); } };
+  const prev = () => { if (idx > 0) { setIdx(idx - 1); setFlipped(false); } };
+
+  return (
+    <div style={{ padding:"20px" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
+        <div style={{ fontSize:11,color:"#9ca3af",letterSpacing:"0.08em",fontWeight:600 }}>Card {idx + 1} / {data.cards.length}</div>
+        <button onClick={onClose} style={{ background:"transparent",border:"none",color:"#6b7280",cursor:"pointer",fontSize:11 }}>Close</button>
+      </div>
+      <div style={{ height:4,background:"rgba(255,255,255,0.05)",borderRadius:2,marginBottom:18,overflow:"hidden" }}>
+        <div style={{ height:"100%",background:"linear-gradient(90deg,#a5b4fc,#6366f1)",width:`${((idx + 1) / data.cards.length) * 100}%`,transition:"width 0.3s" }}/>
+      </div>
+
+      <div onClick={()=>setFlipped(!flipped)} style={{
+        cursor:"pointer",minHeight:180,padding:"30px 22px",
+        background: flipped ? "linear-gradient(135deg,rgba(251,191,36,0.08),rgba(245,158,11,0.04))" : "linear-gradient(135deg,rgba(99,102,241,0.1),rgba(165,180,252,0.05))",
+        border: `1.5px solid ${flipped ? "rgba(251,191,36,0.25)" : "rgba(99,102,241,0.25)"}`,
+        borderRadius:16,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",textAlign:"center",
+        transition:"all 0.3s"
+      }}>
+        <div style={{ fontSize:9,letterSpacing:"0.18em",fontWeight:600,marginBottom:14,color: flipped ? "#fbbf24" : "#818cf8" }}>{flipped ? "ANSWER" : "QUESTION"}</div>
+        <div style={{ fontSize: flipped ? 14 : 16,fontWeight:flipped?400:600,color:"#fff",lineHeight:1.5 }}>{flipped ? c.back : c.front}</div>
+        <div style={{ fontSize:10,color:"#6b7280",marginTop:18 }}>Tap to {flipped ? "see question" : "reveal answer"}</div>
+      </div>
+
+      <div style={{ display:"flex",gap:8,marginTop:14 }}>
+        <button onClick={prev} disabled={idx===0} style={{ flex:1,padding:"11px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,color:idx===0?"#374151":"#d1d5db",fontSize:12,fontWeight:600,cursor:idx===0?"default":"pointer" }}>← Previous</button>
+        <button onClick={next} disabled={idx + 1 >= data.cards.length} style={{ flex:1,padding:"11px",background: idx+1>=data.cards.length ? "rgba(255,255,255,0.04)" : "linear-gradient(135deg,#a5b4fc,#6366f1)",border:"none",borderRadius:10,color: idx+1>=data.cards.length ? "#374151" : "#fff",fontSize:12,fontWeight:600,cursor: idx+1>=data.cards.length ? "default" : "pointer" }}>Next →</button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// MAIN APP
+// ════════════════════════════════════════════════════════════════
+function Yolvi() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  const [view, setView] = useState("home"); // home | mode
+  const [mode, setMode] = useState(null); // explain | quiz | flashcards | summarize | homework
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loadingSlow, setLoadingSlow] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsPage, setSettingsPage] = useState(null); // null | "subscription" | "restore" | "privacy" | "terms" | "contact" | "report"
+  const [quizCount, setQuizCount] = useState(5);
+  const [flashCount, setFlashCount] = useState(10);
+  const [savedStudySets, setSavedStudySets] = useState([]);
+  const [pendingGuestSave, setPendingGuestSave] = useState(null); // {topic, mode, data} when guest tries to save
+  const [feedback, setFeedback] = useState({}); // { [messageIdx]: "up" | "down" }
+  const [savedFilter, setSavedFilter] = useState("all"); // "all" | "quiz" | "flashcards"
+
+  const addStudySet = (set) => {
+    // If user is a guest, intercept the save and prompt them to create a profile.
+    // The pending set is saved automatically once they create it.
+    if (currentUser && currentUser.isGuest) {
+      requestGuestSave(set);
+      return;
+    }
+    setSavedStudySets(prev => [set, ...prev.filter(s => s.id !== set.id)]);
+  };
+  const removeStudySet = (id) => {
+    setSavedStudySets(prev => prev.filter(s => s.id !== id));
+  };
+  const openStudySet = (set) => {
+    setMode(set.mode); setView("mode");
+    setMessages([
+      { role:"user", content: set.topic },
+      { role:"assistant", content: "", structured: set.data, mode: set.mode, topic: set.topic, fromSaved: true }
+    ]);
+    setInput("");
+  };
+
+
+
+
+  const bottomRef = useRef(null);
+  const taRef = useRef(null);
+
+
+  // Load saved study sets for a given email.
+  // If no data exists, reset to empty array so nothing leaks across profiles.
+  const loadUserData = (email) => {
+    let sets = [];
+    try {
+      const setsRaw = localStorage.getItem(`yolvi:sets:${email}`);
+      if (setsRaw) {
+        const parsed = JSON.parse(setsRaw);
+        if (Array.isArray(parsed)) sets = parsed;
+      }
+    } catch(e) {}
+    setSavedStudySets(sets);
+  };
+
+  useEffect(() => {
+    try {
+      const session = localStorage.getItem("yolvi:session");
+      if (session) {
+        const u = localStorage.getItem(`yolvi:user:${session}`);
+        if (u) {
+          let user = JSON.parse(u);
+          // Migration: strip out any legacy "password" field from older versions
+          if (user && "password" in user) {
+            delete user.password;
+            try { localStorage.setItem(`yolvi:user:${session}`, JSON.stringify(user)); } catch(e) {}
+          }
+          setCurrentUser(user);
+          loadUserData(session);
+        }
+      }
+    } catch(e) {}
+    setAuthChecked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
+
+  // Persist saved study sets — only for non-guest users with an email
+  useEffect(() => {
+    if (!currentUser || currentUser.isGuest || !currentUser.email) return;
+    try {
+      localStorage.setItem(`yolvi:sets:${currentUser.email}`, JSON.stringify(savedStudySets));
+    } catch(e) {}
+  }, [savedStudySets, currentUser]);
+
+  const handleAuth = (user) => {
+    setCurrentUser(user);
+    loadUserData(user.email);
+    setView("home");
+    setMode(null);
+    setMessages([]);
+    setInput("");
+    setFeedback({});
+    setSavedFilter("all");
+    setShowSettings(false);
+  };
+
+  // Sign in as a temporary in-memory guest. No localStorage profile is written.
+  const handleGuest = () => {
+    setCurrentUser({ name: "Guest", email: null, isGuest: true, isPro: false });
+    setSavedStudySets([]);
+    setView("home");
+    setMode(null);
+    setMessages([]);
+    setInput("");
+    setFeedback({});
+    setSavedFilter("all");
+    setShowSettings(false);
+  };
+
+  // Called by SaveSetButton when a guest user tries to save.
+  // We hold the set aside, show the upgrade modal, and save it after profile creation.
+  const requestGuestSave = (set) => {
+    setPendingGuestSave(set);
+  };
+
+  // Called by GuestUpgradeModal after the user creates a real profile.
+  // Critical: we must NOT lose the currently-generated quiz/flashcards. We keep
+  // existing messages, mode and view, only swap currentUser + load that user's saved sets,
+  // then save the pending set.
+  const handleGuestUpgrade = (user) => {
+    const pending = pendingGuestSave;
+    setCurrentUser(user);
+
+    // Load the new user's saved sets into memory…
+    let existingSets = [];
+    try {
+      const setsRaw = localStorage.getItem(`yolvi:sets:${user.email}`);
+      if (setsRaw) {
+        const parsed = JSON.parse(setsRaw);
+        if (Array.isArray(parsed)) existingSets = parsed;
+      }
+    } catch(e) {}
+
+    // …then prepend the pending set if any.
+    if (pending) {
+      setSavedStudySets([pending, ...existingSets.filter(s => s.id !== pending.id)]);
+    } else {
+      setSavedStudySets(existingSets);
+    }
+    setPendingGuestSave(null);
+    // Intentionally do NOT reset view/mode/messages — the user keeps their quiz/flashcards on screen.
+  };
+
+  // "Switch profile" — fully clear all in-memory app state so nothing
+  // leaks into the next profile that signs in.
+  const handleLogout = () => {
+    try { localStorage.removeItem("yolvi:session"); } catch(e) {}
+    setCurrentUser(null);
+    setView("home");
+    setMode(null);
+    setMessages([]);
+    setInput("");
+    setSavedStudySets([]);
+    setFeedback({});
+    setSavedFilter("all");
+    setShowSettings(false);
+    setSettingsPage(null);
+  };
+
+  const handleDeleteAccount = () => {
+    if (!confirm("Delete your local profile and all saved study sets from this device? This cannot be undone.")) return;
+    try {
+      if (currentUser && currentUser.email) {
+        localStorage.removeItem(`yolvi:user:${currentUser.email}`);
+        localStorage.removeItem(`yolvi:sets:${currentUser.email}`);
+        // Legacy: remove old daily counter key if it exists from previous versions
+        localStorage.removeItem(`yolvi:daily:${currentUser.email}`);
+      }
+      localStorage.removeItem("yolvi:session");
+    } catch(e) {}
+    setSavedStudySets([]);
+    setFeedback({});
+    handleLogout();
+  };
+
+  const startMode = (m) => {
+    setMode(m); setView("mode"); setMessages([]); setInput("");
+  };
+
+  const goHome = () => { setView("home"); setMode(null); setMessages([]); setInput(""); setFeedback({}); };
+
+  // Single fetch with timeout — bails out cleanly if the server hangs.
+  const fetchWithTimeout = async (url, timeoutMs) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // One generation request — with timeout + automatic retry once on timeout/network failure.
+  // Pollinations sometimes takes 1–3s, sometimes hangs forever; the 30s timeout catches the hangs.
+  const generateOnce = async (currentMode, text, extraReminder) => {
+    const systemMap = {
+      explain: SYSTEM_EXPLAIN,
+      quiz: SYSTEM_QUIZ_TEMPLATE.replace("{COUNT}", String(quizCount)),
+      flashcards: SYSTEM_FLASHCARDS_TEMPLATE.replace("{COUNT}", String(flashCount)),
+      summarize: SYSTEM_SUMMARIZE,
+      homework: SYSTEM_HOMEWORK,
+    };
+    const sysPrompt = (systemMap[currentMode] || SYSTEM_BASE) + (extraReminder ? "\n\n" + extraReminder : "");
+    const fullPrompt = sysPrompt + "\n\nUser request: " + text;
+
+    // Try up to 2 times, with a fresh seed each attempt
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const url = "https://text.pollinations.ai/" + encodeURIComponent(fullPrompt) +
+        "?model=openai&seed=" + Math.floor(Math.random() * 99999) + "&private=true";
+      try {
+        const res = await fetchWithTimeout(url, 30000);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const txt = (await res.text()).trim();
+        if (!txt) throw new Error("Empty response");
+        return txt;
+      } catch (err) {
+        lastErr = err;
+        // Retry once on timeout/abort/network error; don't retry on HTTP errors
+        if (err.name !== "AbortError" && !String(err.message).includes("Failed to fetch") && !String(err.message).includes("Empty")) {
+          throw err;
+        }
+      }
+    }
+    throw lastErr || new Error("Request failed after retries");
+  };
+
+  const send = async (overrideText, fromClarification) => {
+    // Allow callers (like ClarifyView suggestions) to send directly without going through input state
+    const text = (typeof overrideText === "string" ? overrideText : input).trim();
+    if (!text || loading) return;
+
+    // Snapshot the mode at the moment of sending so async state changes can't switch us mid-flight.
+    const sendMode = mode;
+
+    setMessages(prev => [...prev, { role:"user", content:text }]);
+    setInput("");
+    if (taRef.current) taRef.current.style.height = "auto";
+    setLoading(true);
+    setLoadingSlow(false);
+    const slowTimer = setTimeout(() => setLoadingSlow(true), 8000);
+
+    try {
+      // If user already picked a clarification suggestion, force AI to generate directly.
+      const userClarifiedReminder = fromClarification
+        ? "The user has already specified what they want. DO NOT ask for clarification again. Generate the content directly."
+        : null;
+      let reply = await generateOnce(sendMode, text, userClarifiedReminder);
+
+      if (sendMode === "quiz" || sendMode === "flashcards") {
+        let parsed = extractJson(reply);
+        let hasQuiz = parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0;
+        let hasCards = parsed && Array.isArray(parsed.cards) && parsed.cards.length > 0;
+        const correctShape = (sendMode === "quiz" && hasQuiz) || (sendMode === "flashcards" && hasCards);
+        const wrongShape = !correctShape && (hasQuiz || hasCards);
+
+        // If we got the wrong shape, retry ONCE with a stronger reminder.
+        if (wrongShape) {
+          const reminder = sendMode === "quiz"
+            ? "CRITICAL: respond with a 'questions' array (multiple choice quiz). DO NOT respond with a 'cards' array."
+            : "CRITICAL: respond with a 'cards' array (front/back flashcards). DO NOT respond with a 'questions' array.";
+          try {
+            reply = await generateOnce(sendMode, text, reminder);
+            parsed = extractJson(reply);
+            hasQuiz = parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0;
+            hasCards = parsed && Array.isArray(parsed.cards) && parsed.cards.length > 0;
+          } catch(e) { /* keep original parsed */ }
+        }
+
+        // Now decide what to render
+        if (parsed && parsed.needsClarification) {
+          setMessages(prev => [...prev, { role:"assistant", clarify: parsed, mode: sendMode, topic: text }]);
+        } else if (sendMode === "quiz" && hasQuiz) {
+          // Strip any cards/flashcard fields so the renderer cannot accidentally show flashcards too.
+          const cleanData = { topic: parsed.topic, questions: parsed.questions };
+          setMessages(prev => [...prev, { role:"assistant", content:reply, structured:cleanData, mode:"quiz", topic:text }]);
+        } else if (sendMode === "flashcards" && hasCards) {
+          // Strip any questions/quiz fields so the renderer cannot accidentally show a quiz too.
+          const cleanData = { topic: parsed.topic, cards: parsed.cards };
+          setMessages(prev => [...prev, { role:"assistant", content:reply, structured:cleanData, mode:"flashcards", topic:text }]);
+        } else {
+          // Still wrong (or no JSON) after retry — give the user a clear retry path,
+          // never silently render wrong content.
+          setMessages(prev => [...prev, {
+            role:"assistant",
+            retryable: { mode: sendMode, text },
+            content: sendMode === "quiz"
+              ? "⚠️ Couldn't generate a proper quiz this time. Try a more specific topic, or tap Try again."
+              : "⚠️ Couldn't generate proper flashcards this time. Try a more specific topic, or tap Try again."
+          }]);
+        }
+      } else {
+        setMessages(prev => [...prev, { role:"assistant", content:reply }]);
+      }
+    } catch (err) {
+      const friendly = err.name === "AbortError"
+        ? "⚠️ The server took too long to respond. Please try again."
+        : `⚠️ Error: ${err.message}`;
+      setMessages(prev => [...prev, { role:"assistant", retryable: { mode: sendMode, text }, content: friendly }]);
+    }
+    clearTimeout(slowTimer);
+    setLoading(false);
+    setLoadingSlow(false);
+  };
+
+
+  // ── Loading ──
+  if (!authChecked) {
+    return (
+      <div style={{ height:"100vh",background:"linear-gradient(180deg,#0a0a14,#13132a)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',sans-serif" }}>
+        <style>{`@keyframes ybounce{0%,80%,100%{transform:translateY(0);opacity:0.4}40%{transform:translateY(-5px);opacity:1}}`}</style>
+        <Dots/>
+      </div>
+    );
+  }
+  if (!currentUser) return <AuthScreen onAuth={handleAuth} onGuest={handleGuest}/>;
+
+  const modes = [
+    { id:"explain", icon:"💡", title:"Explain", desc:"Understand any topic" },
+    { id:"quiz", icon:"📝", title:"Quiz me", desc:"Test your knowledge" },
+    { id:"flashcards", icon:"🃏", title:"Flashcards", desc:"Memorize key concepts" },
+    { id:"summarize", icon:"📋", title:"Summarize", desc:"Notes into key points" },
+    { id:"homework", icon:"📚", title:"Homework", desc:"Step-by-step help" },
+  ];
+
+  const greeting = (() => {
+    const hr = new Date().getHours();
+    return hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
+  })();
+
+  return (
+    <div style={{ fontFamily:"'Inter',sans-serif",background:"#0a0a14",height:"100dvh",display:"flex",flexDirection:"column",overflow:"hidden",color:"#fff",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        @keyframes ybounce{0%,80%,100%{transform:translateY(0);opacity:0.4}40%{transform:translateY(-5px);opacity:1}}
+        @keyframes yfadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes yfadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes yshimmer{0%{background-position:-200% center}100%{background-position:200% center}}
+        .y-bubble{animation:yfadeUp 0.3s ease forwards;}
+        .y-mode-card:hover{background:rgba(99,102,241,0.06)!important;border-color:rgba(99,102,241,0.3)!important;transform:translateY(-2px);}
+        .y-mode-card{transition:all 0.2s;}
+        .y-ibtn{transition:all 0.2s;}
+        .y-ibtn:hover{background:rgba(99,102,241,0.12)!important;color:#a5b4fc!important;}
+        textarea{resize:none;}textarea:focus{outline:none;}
+        ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:#1f2037;border-radius:4px;}
+      `}</style>
+
+
+      {/* Settings sub-pages */}
+      {settingsPage && (
+        <div onClick={()=>setSettingsPage(null)} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",zIndex:90,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"40px 20px",animation:"yfadeIn 0.2s ease",overflow:"auto" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:"100%",maxWidth:480,background:"#13132a",border:"1px solid rgba(99,102,241,0.18)",borderRadius:18,padding:"22px 22px",fontFamily:"'Inter',sans-serif" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+              <div style={{ fontSize:17,fontWeight:700,color:"#fff" }}>
+                {settingsPage === "privacy" && "Privacy policy"}
+                {settingsPage === "terms" && "Terms of service"}
+                {settingsPage === "contact" && "Contact support"}
+                {settingsPage === "report" && "Report a problem"}
+              </div>
+              <button onClick={()=>setSettingsPage(null)} style={{ width:28,height:28,borderRadius:7,background:"rgba(255,255,255,0.05)",border:"none",color:"#9ca3af",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+
+            {settingsPage === "privacy" && (
+              <div style={{ fontSize:12.5,color:"#9ca3af",lineHeight:1.7,maxHeight:380,overflowY:"auto",paddingRight:8 }}>
+                <p style={{ marginBottom:10,color:"#d1d5db" }}><strong>Last updated:</strong> April 2026</p>
+                <p style={{ marginBottom:10 }}>Yolvi ("we", "our", "the app") respects your privacy. This policy explains what data we collect and how we use it.</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>What stays on your device</div>
+                <p style={{ marginBottom:8 }}>• Profile info: name and email, stored locally on your device</p>
+                <p style={{ marginBottom:10 }}>• Study activity: chats, quizzes, flashcards, and saved study sets, stored locally on your device</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>What is sent to our AI provider</div>
+                <p style={{ marginBottom:8 }}>The prompts you send are sent to the AI provider so it can generate responses. We do not sell your data.</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>Your rights</div>
+                <p style={{ marginBottom:8 }}>You can delete your local profile and all saved data anytime from Settings.</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>Contact</div>
+                <p>Questions? Reach us at support@yolvi.app</p>
+              </div>
+            )}
+
+            {settingsPage === "terms" && (
+              <div style={{ fontSize:12.5,color:"#9ca3af",lineHeight:1.7,maxHeight:380,overflowY:"auto",paddingRight:8 }}>
+                <p style={{ marginBottom:10,color:"#d1d5db" }}><strong>Last updated:</strong> April 2026</p>
+                <p style={{ marginBottom:10 }}>Yolvi is currently free during early access. By using Yolvi you agree to these terms.</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>Use of the service</div>
+                <p style={{ marginBottom:10 }}>Yolvi is a study tool. Don't use it to harm others, share illegal content, or violate laws.</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>AI-generated content</div>
+                <p style={{ marginBottom:10 }}>AI can make mistakes. Always verify important facts from authoritative sources. Yolvi is not a substitute for medical, legal, or financial advice.</p>
+                <div style={{ fontSize:13,fontWeight:600,color:"#fff",margin:"14px 0 6px" }}>Local profile</div>
+                <p>You can delete your local profile and all saved data anytime from Settings.</p>
+              </div>
+            )}
+
+            {settingsPage === "contact" && (
+              <div style={{ fontSize:13,color:"#d1d5db",lineHeight:1.7 }}>
+                <p style={{ marginBottom:14 }}>Need help or have a question? We typically reply within 24 hours.</p>
+                <a href="mailto:support@yolvi.app" style={{ display:"inline-block",padding:"11px 18px",background:"linear-gradient(135deg,#a5b4fc,#6366f1)",border:"none",borderRadius:10,color:"#fff",fontSize:12.5,fontWeight:600,textDecoration:"none" }}>Email support@yolvi.app</a>
+                <p style={{ fontSize:11.5,color:"#6b7280",marginTop:14,lineHeight:1.6 }}>When emailing, please include your profile email and a description of the issue.</p>
+              </div>
+            )}
+
+            {settingsPage === "report" && (
+              <div style={{ fontSize:13,color:"#d1d5db",lineHeight:1.7 }}>
+                <p style={{ marginBottom:12 }}>Found a bug, inappropriate AI response, or other issue? Let us know.</p>
+                <textarea placeholder="Describe what happened..." style={{ width:"100%",minHeight:100,padding:"12px 14px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:13,resize:"vertical",marginBottom:10 }}/>
+                <button onClick={()=>{ alert("Report sent. Thanks for helping us improve Yolvi!"); setSettingsPage(null); }} style={{ padding:"10px 18px",background:"linear-gradient(135deg,#a5b4fc,#6366f1)",border:"none",borderRadius:9,color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer" }}>Send report</button>
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* Guest upgrade prompt — shown when a guest tries to save */}
+      {pendingGuestSave && (
+        <GuestUpgradeModal
+          onClose={() => setPendingGuestSave(null)}
+          onCreate={handleGuestUpgrade}
+        />
+      )}
+
+      {/* Settings panel */}
+      {showSettings && (
+        <div onClick={()=>setShowSettings(false)} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(4px)",zIndex:50,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"60px 20px",animation:"yfadeIn 0.2s ease" }}>
+          <div onClick={e=>e.stopPropagation()} style={{ width:"100%",maxWidth:380,background:"#13132a",border:"1px solid rgba(99,102,241,0.15)",borderRadius:16,padding:"22px 20px" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
+              <div style={{ fontSize:18,fontWeight:700 }}>Settings</div>
+              <button onClick={()=>setShowSettings(false)} style={{ background:"transparent",border:"none",color:"#9ca3af",cursor:"pointer" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+
+            {/* Profile */}
+            <div style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,0.03)",borderRadius:12,marginBottom:14 }}>
+              <div style={{ width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,#a5b4fc,#6366f1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,flexShrink:0 }}>{(currentUser?.name || "?").charAt(0).toUpperCase()}</div>
+              <div style={{ flex:1,minWidth:0 }}>
+                <div style={{ fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{currentUser?.name || "Profile"}</div>
+                <div style={{ fontSize:11,color:"#9ca3af",marginTop:1 }}>{currentUser.isGuest ? "Guest · Early access" : "Yolvi · Early access"}</div>
+              </div>
+            </div>
+
+            {/* Settings items */}
+            <div style={{ display:"flex",flexDirection:"column",gap:2 }}>
+{[
+                { label:"Privacy policy", action:()=>setSettingsPage("privacy") },
+                { label:"Terms of service", action:()=>setSettingsPage("terms") },
+                { label:"Contact support", action:()=>setSettingsPage("contact") },
+                { label:"Report a problem", action:()=>setSettingsPage("report") },
+              ].map(item=>(
+                <button key={item.label} onClick={item.action} style={{ padding:"11px 14px",background:"transparent",border:"none",color:"#d1d5db",fontSize:12.5,cursor:"pointer",textAlign:"left",borderRadius:8,display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"'Inter',sans-serif" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span>{item.label}</span>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ color:"#4b5563" }}><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              ))}
+
+              <div style={{ height:1,background:"rgba(255,255,255,0.05)",margin:"8px 0" }}/>
+
+              <button onClick={handleLogout} style={{ padding:"11px 14px",background:"transparent",border:"none",color:"#9ca3af",fontSize:12.5,cursor:"pointer",textAlign:"left",borderRadius:8,fontFamily:"'Inter',sans-serif" }}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                Switch profile
+              </button>
+              {!currentUser?.isGuest && (
+                <button onClick={handleDeleteAccount} style={{ padding:"11px 14px",background:"transparent",border:"none",color:"#fca5a5",fontSize:12.5,cursor:"pointer",textAlign:"left",borderRadius:8,fontFamily:"'Inter',sans-serif" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.05)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  Delete local profile
+                </button>
+              )}
+            </div>
+
+            <div style={{ textAlign:"center",fontSize:9,color:"#374151",letterSpacing:"0.1em",marginTop:14 }}>YOLVI · v1.0</div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div style={{ display:"flex",alignItems:"center",gap:11,padding:"16px 20px",borderBottom:"1px solid rgba(99,102,241,0.08)",flexShrink:0 }}>
+        {view === "mode" ? (
+          <button onClick={goHome} aria-label="Back" style={{ width:40,height:40,borderRadius:10,border:"1px solid rgba(99,102,241,0.25)",background:"rgba(99,102,241,0.08)",color:"#a5b4fc",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",padding:0 }}
+            onTouchStart={e=>e.currentTarget.style.background="rgba(99,102,241,0.18)"}
+            onTouchEnd={e=>e.currentTarget.style.background="rgba(99,102,241,0.08)"}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ pointerEvents:"none" }}><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        ) : (
+          <Logo size={28}/>
+        )}
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:17,fontWeight:700,letterSpacing:"-0.02em",display:"flex",alignItems:"baseline",gap:7 }}>
+            {view === "mode" ? modes.find(m => m.id === mode)?.title : APP_NAME}
+          </div>
+          <div style={{ fontSize:10,color:"#6b7280",fontWeight:500,marginTop:1 }}>
+            {view === "mode" ? modes.find(m => m.id === mode)?.desc : "Yolvi is free during early access."}
+          </div>
+        </div>
+
+        <button className="y-ibtn" onClick={()=>setShowSettings(true)} style={{ width:34,height:34,borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",background:"transparent",color:"#9ca3af",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center" }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </button>
+      </div>
+
+      {/* HOME VIEW — Mode picker */}
+      {view === "home" && (
+        <div style={{ flex:1,overflowY:"auto",padding:"24px 20px" }}>
+          {/* Greeting */}
+          <div style={{ marginBottom:24 }}>
+            <div style={{ fontSize:13,color:"#9ca3af",fontWeight:500,marginBottom:4 }}>{greeting}{currentUser?.name ? `, ${currentUser.name.split(" ")[0]}` : ""}.</div>
+            <div style={{ fontSize:24,fontWeight:700,color:"#fff",letterSpacing:"-0.02em",lineHeight:1.2 }}>What are we<br/>learning today?</div>
+          </div>
+
+          {/* Mode cards — the main entry points */}
+          <div style={{ display:"flex",flexDirection:"column",gap:10,marginBottom:24 }}>
+            {modes.map(m => (
+              <button key={m.id} className="y-mode-card" onClick={()=>startMode(m.id)} style={{
+                padding:"16px 18px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,
+                cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",fontFamily:"'Inter',sans-serif",
+                position:"relative"
+              }}>
+                <div style={{ width:44,height:44,borderRadius:11,background:"rgba(99,102,241,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}>{m.icon}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14.5,fontWeight:600,color:"#fff",marginBottom:2 }}>
+                    {m.title}
+                  </div>
+                  <div style={{ fontSize:12,color:"#9ca3af" }}>{m.desc}</div>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ color:"#4b5563" }}><path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ textAlign:"center",fontSize:10,color:"#374151",marginTop:14,lineHeight:1.7 }}>
+            AI can make mistakes. Check important facts.
+          </div>
+        </div>
+      )}
+
+      {/* MODE VIEW — Chat with selected mode */}
+      {view === "mode" && (
+        <>
+          <div style={{ flex:1,overflowY:"auto",padding:"20px 20px 10px",display:"flex",flexDirection:"column",gap:16 }}>
+            {messages.length === 0 && (
+              <div>
+                <div style={{ textAlign:"center",padding:"40px 20px 20px" }}>
+                  <div style={{ fontSize:42,marginBottom:14 }}>{modes.find(m=>m.id===mode)?.icon}</div>
+                  <div style={{ fontSize:16,fontWeight:600,color:"#fff",marginBottom:6 }}>{modes.find(m=>m.id===mode)?.title} mode</div>
+                  <div style={{ fontSize:13,color:"#9ca3af",lineHeight:1.6,maxWidth:280,margin:"0 auto" }}>
+                    {mode === "explain" && "Type a topic to get a clear explanation with examples."}
+                    {mode === "quiz" && `Type a specific topic to generate a ${quizCount}-question quiz. Be specific — "WW2 in Europe" works better than just "history".`}
+                    {mode === "flashcards" && `Type a specific topic to generate ${flashCount} flashcards. Be specific — "photosynthesis steps" works better than "biology".`}
+                    {mode === "summarize" && "Paste your notes to get key points and test questions."}
+                    {mode === "homework" && "Type your homework question to get step-by-step help."}
+                  </div>
+                </div>
+
+                {/* Show ONLY this mode's saved sets in its own empty state.
+                    Quiz mode shows only saved quizzes. Flashcards mode shows only saved flashcards.
+                    Other modes show nothing. */}
+                {(mode === "quiz" || mode === "flashcards") && savedStudySets.filter(s => s.mode === mode).length > 0 && (
+                  <div style={{ padding:"10px 0 20px",maxWidth:520,margin:"0 auto" }}>
+                    <div style={{ fontSize:10,letterSpacing:"0.16em",fontWeight:700,color:"#6b7280",textTransform:"uppercase",marginBottom:10,paddingLeft:4 }}>
+                      Your saved {mode === "quiz" ? "quizzes" : "flashcards"}
+                    </div>
+                    <div style={{ display:"flex",flexDirection:"column",gap:7 }}>
+                      {savedStudySets.filter(s => s.mode === mode).slice(0, 8).map(set => (
+                        <div key={set.id} style={{
+                          padding:"11px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",
+                          borderRadius:11,display:"flex",alignItems:"center",gap:10
+                        }}>
+                          <div style={{ width:30,height:30,borderRadius:8,background: mode==="quiz" ? "rgba(99,102,241,0.1)" : "rgba(251,191,36,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0 }}>{mode==="quiz"?"📝":"🃏"}</div>
+                          <div onClick={()=>openStudySet(set)} style={{ flex:1,minWidth:0,cursor:"pointer" }}>
+                            <div style={{ fontSize:12.5,fontWeight:600,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{set.topic}</div>
+                            <div style={{ fontSize:10,color:"#6b7280",marginTop:1 }}>{mode==="quiz"?`${set.data.questions?.length||0} questions`:`${set.data.cards?.length||0} cards`} · saved {formatDate(set.savedAt)}</div>
+                          </div>
+                          <button onClick={()=>openStudySet(set)} title="Review" style={{ padding:"5px 10px",borderRadius:7,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.22)",color:"#a5b4fc",cursor:"pointer",fontSize:10,fontWeight:600,fontFamily:"'Inter',sans-serif",flexShrink:0 }}>
+                            Review
+                          </button>
+                          <button onClick={e=>{ e.stopPropagation(); removeStudySet(set.id); }} title="Delete" style={{ width:22,height:22,borderRadius:6,background:"transparent",border:"none",color:"#4b5563",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}
+                            onMouseEnter={e=>e.currentTarget.style.color="#fca5a5"}
+                            onMouseLeave={e=>e.currentTarget.style.color="#4b5563"}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {messages.map((msg, i) => (
+              <div key={i} className="y-bubble" style={{ display:"flex",flexDirection:msg.role==="user"?"row-reverse":"row",alignItems:"flex-start",gap:10 }}>
+                {msg.role==="assistant" && <div style={{ flexShrink:0,marginTop:2 }}><Logo size={26}/></div>}
+                <div style={{ maxWidth:"82%" }}>
+                  {msg.role==="user"
+                    ? <div style={{ padding:"11px 15px",fontSize:14,lineHeight:1.5,background:"linear-gradient(135deg,#a5b4fc,#6366f1)",borderRadius:"16px 16px 4px 16px",color:"#fff",boxShadow:"0 4px 12px rgba(99,102,241,0.2)" }}>{msg.content}</div>
+                    : msg.clarify
+                      ? <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:"16px 16px 16px 4px",overflow:"hidden" }}>
+                          <ClarifyView data={msg.clarify} onPick={(suggestion) => send(suggestion, true)}/>
+                        </div>
+                    : msg.retryable
+                      ? <div style={{ padding:"14px 18px",fontSize:14,lineHeight:1.65,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:"16px 16px 16px 4px",color:"#d1d5db" }}>
+                          <div dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }}/>
+                          <button onClick={() => send(msg.retryable.text)} style={{ marginTop:10,padding:"8px 14px",background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:8,color:"#a5b4fc",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Inter',sans-serif" }}>
+                            🔄 Try again
+                          </button>
+                        </div>
+                    : msg.structured && Array.isArray(msg.structured.questions) && msg.structured.questions.length > 0
+                      ? <div>
+                          <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:"16px 16px 16px 4px",overflow:"hidden" }}>
+                            <QuizView data={msg.structured} onClose={goHome}/>
+                          </div>
+                          {!msg.fromSaved && (
+                            <div style={{ marginTop:8,display:"flex",justifyContent:"flex-start" }}>
+                              <SaveSetButton topic={msg.topic || "Quiz"} mode="quiz" data={msg.structured} onSave={addStudySet}/>
+                            </div>
+                          )}
+                        </div>
+                      : msg.structured && Array.isArray(msg.structured.cards) && msg.structured.cards.length > 0
+                        ? <div>
+                            <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:"16px 16px 16px 4px",overflow:"hidden" }}>
+                              <FlashcardsView data={msg.structured} onClose={goHome}/>
+                            </div>
+                            {!msg.fromSaved && (
+                              <div style={{ marginTop:8,display:"flex",justifyContent:"flex-start" }}>
+                                <SaveSetButton topic={msg.topic || "Flashcards"} mode="flashcards" data={msg.structured} onSave={addStudySet}/>
+                              </div>
+                            )}
+                          </div>
+                        : <div style={{ padding:"14px 18px",fontSize:14,lineHeight:1.65,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:"16px 16px 16px 4px",color:"#d1d5db" }}
+                            dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }}/>
+                  }
+                  {msg.role==="assistant" && !msg.structured && (
+                    <div style={{ display:"flex",gap:6,marginTop:8 }}>
+                      <button title="Helpful" onClick={()=>setFeedback(prev=>({...prev,[i]:"up"}))} style={{ width:28,height:28,borderRadius:7,background: feedback[i]==="up" ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.03)",border: feedback[i]==="up" ? "1px solid rgba(34,197,94,0.4)" : "1px solid rgba(255,255,255,0.06)",color: feedback[i]==="up" ? "#86efac" : "#6b7280",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s" }}>👍</button>
+                      <button title="Not helpful" onClick={()=>setFeedback(prev=>({...prev,[i]:"down"}))} style={{ width:28,height:28,borderRadius:7,background: feedback[i]==="down" ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.03)",border: feedback[i]==="down" ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(255,255,255,0.06)",color: feedback[i]==="down" ? "#fca5a5" : "#6b7280",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s" }}>👎</button>
+                      <button title="Report a problem" onClick={()=>setSettingsPage("report")} style={{ width:28,height:28,borderRadius:7,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:"#6b7280",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s" }}
+                        onMouseEnter={e=>e.currentTarget.style.color="#fca5a5"}
+                        onMouseLeave={e=>e.currentTarget.style.color="#6b7280"}>⚐</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {loading && (
+              <div className="y-bubble" style={{ display:"flex",alignItems:"flex-start",gap:10 }}>
+                <div style={{ flexShrink:0,marginTop:2 }}><Logo size={26}/></div>
+                <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:"16px 16px 16px 4px",padding:"13px 18px",display:"flex",flexDirection:"column",gap:4 }}>
+                  <Dots/>
+                  {loadingSlow && <div style={{ fontSize:11,color:"#6b7280",fontStyle:"italic" }}>Still thinking… (server is slow today)</div>}
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef}/>
+          </div>
+
+          {/* Quiz count picker — only visible in quiz mode, before first message */}
+          {mode === "quiz" && messages.length === 0 && (
+            <div style={{ padding:"0 20px 8px",flexShrink:0 }}>
+              <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px" }}>
+                <div style={{ fontSize:11,color:"#9ca3af",letterSpacing:"0.06em",fontWeight:600,marginBottom:9,textTransform:"uppercase" }}>Number of questions</div>
+                <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+                  {[3,5,10,15,20].map(n => (
+                    <button key={n} onClick={()=>setQuizCount(n)} style={{
+                      flex:"1 1 50px",padding:"9px 8px",
+                      background: quizCount === n ? "linear-gradient(135deg,#a5b4fc,#6366f1)" : "rgba(255,255,255,0.03)",
+                      border: quizCount === n ? "1px solid #6366f1" : "1px solid rgba(255,255,255,0.07)",
+                      borderRadius:9, color: quizCount === n ? "#fff" : "#9ca3af",
+                      fontSize:13, fontWeight: quizCount === n ? 700 : 500,
+                      cursor:"pointer", fontFamily:"'Inter',sans-serif", transition:"all 0.15s"
+                    }}>{n}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Flashcard count picker — only visible in flashcards mode, before first message */}
+          {mode === "flashcards" && messages.length === 0 && (
+            <div style={{ padding:"0 20px 8px",flexShrink:0 }}>
+              <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"12px 14px" }}>
+                <div style={{ fontSize:11,color:"#9ca3af",letterSpacing:"0.06em",fontWeight:600,marginBottom:9,textTransform:"uppercase" }}>Number of flashcards</div>
+                <div style={{ display:"flex",gap:6,flexWrap:"wrap" }}>
+                  {[5,10,15,20,25].map(n => (
+                    <button key={n} onClick={()=>setFlashCount(n)} style={{
+                      flex:"1 1 50px",padding:"9px 8px",
+                      background: flashCount === n ? "linear-gradient(135deg,#a5b4fc,#6366f1)" : "rgba(255,255,255,0.03)",
+                      border: flashCount === n ? "1px solid #6366f1" : "1px solid rgba(255,255,255,0.07)",
+                      borderRadius:9, color: flashCount === n ? "#fff" : "#9ca3af",
+                      fontSize:13, fontWeight: flashCount === n ? 700 : 500,
+                      cursor:"pointer", fontFamily:"'Inter',sans-serif", transition:"all 0.15s"
+                    }}>{n}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Input */}
+          <div style={{ padding:"12px 20px 16px",borderTop:"1px solid rgba(99,102,241,0.08)",flexShrink:0 }}>
+            <div style={{ display:"flex",gap:10,alignItems:"flex-end",background:"rgba(255,255,255,0.04)",border: input.trim() ? "1.5px solid rgba(99,102,241,0.4)" : "1.5px solid rgba(255,255,255,0.06)",borderRadius:14,padding:"10px 10px 10px 14px",transition:"border-color 0.2s" }}>
+              <textarea ref={taRef} value={input}
+                onChange={e=>{ setInput(e.target.value); e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,140)+"px"; }}
+                onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} }}
+                placeholder={
+                  mode === "explain" ? "What topic do you want to understand?" :
+                  mode === "quiz" ? "What should the quiz be about? (e.g. 'WW2 causes', 'Spanish verbs')" :
+                  mode === "flashcards" ? "What topic should the flashcards cover? (e.g. 'French food vocabulary')" :
+                  mode === "summarize" ? "Paste your notes here…" :
+                  mode === "homework" ? "What's your homework question?" :
+                  "Ask Yolvi…"
+                }
+                rows={1}
+                style={{ flex:1,background:"transparent",border:"none",color:"#fff",fontFamily:"'Inter',sans-serif",fontSize:14,fontWeight:400,lineHeight:1.5,caretColor:"#818cf8",maxHeight:140,overflowY:"auto" }}/>
+              <button onClick={send} disabled={!input.trim() || loading} style={{ width:36,height:36,borderRadius:10,background: input.trim()&&!loading ? "linear-gradient(135deg,#a5b4fc,#6366f1)" : "rgba(255,255,255,0.04)",border:"none",color: input.trim()&&!loading ? "#fff" : "#4b5563",cursor: input.trim()&&!loading ? "pointer" : "default",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow: input.trim()&&!loading ? "0 4px 12px rgba(99,102,241,0.3)" : "none" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+            <div style={{ textAlign:"center",marginTop:6,fontSize:9,color:"#374151" }}>AI can make mistakes. Check important facts.</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(Yolvi));
+
+  </script>
+</body>
+</html>
