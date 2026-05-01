@@ -250,7 +250,34 @@ const Logo = ({ size = 36, glow = false }) => {
     </div>
   );
 };
-
+const Logo = ({ size = 36, glow = false }) => {
+  return (
+    <div style={{ position: "relative", display: "inline-flex" }}>
+      <img
+        src="icon.png"
+        alt="Yolvi logo"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "10px",
+          objectFit: "cover"
+        }}
+      />
+      {glow && (
+        <div
+          style={{
+            position: "absolute",
+            inset: -8,
+            background: "radial-gradient(circle,rgba(99,102,241,0.5) 0%,transparent 70%)",
+            borderRadius: "50%",
+            pointerEvents: "none",
+            filter: "blur(8px)"
+          }}
+        />
+      )}
+    </div>
+  );
+};
 const Dots = ({ color = "#818cf8" }) => (
   <div style={{ display:"flex",gap:5,padding:"4px 0" }}>
     {[0,1,2].map(i=><span key={i} style={{ width:7,height:7,borderRadius:"50%",background:color,display:"inline-block",opacity:0.7,animation:"ybounce 1.2s infinite",animationDelay:`${i*0.2}s` }}/>)}
