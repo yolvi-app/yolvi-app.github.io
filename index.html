@@ -1,53 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-  <meta name="google-site-verification" content="ipJx3lfIkZDvbeom5wtFsAOKoOgShXcCStGN4wlRpkE" />
-  <link rel="manifest" href="manifest.json?v=4" />
-  <link rel="icon" type="image/png" href="./icon.png?v=4" />
-  <link rel="apple-touch-icon" href="./icon.png?v=4" />
-
-  <script data-goatcounter="https://yolvi.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#6366f1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Yolvi — AI Study Tutor | Learn faster with AI</title>
-  <link rel="canonical" href="https://yolvi-app.github.io/" />
-
-<meta name="description" content="Yolvi is an AI study tutor that helps students turn any topic, notes or homework into clear explanations, quizzes and flashcards." />
-<meta name="robots" content="index, follow" />
-<meta name="keywords" content="Yolvi, AI study tutor, AI tutor, study app, flashcards, quizzes, homework help, learn with AI" />
-
-<meta property="og:title" content="Yolvi — AI Study Tutor" />
-<meta property="og:description" content="Turn any topic, notes or homework into clear explanations, quizzes and flashcards." />
-<meta property="og:type" content="website" />
-<meta property="og:site_name" content="Yolvi" />
-<meta property="og:url" content="https://yolvi-app.github.io/" />
-<meta property="og:image" content="https://yolvi-app.github.io/icon.png?v=4" />
-
-<meta name="twitter:card" content="summary" />
-<meta name="twitter:title" content="Yolvi — AI Study Tutor" />
-<meta name="twitter:description" content="Turn any topic, notes or homework into clear explanations, quizzes and flashcards." />
-<meta name="twitter:image" content="https://yolvi-app.github.io/icon.png?v=4" />
-
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  "name": "Yolvi",
-  "applicationCategory": "EducationalApplication",
-  "operatingSystem": "Any",
-  "description": "Yolvi is an AI study tutor that helps students turn any topic, notes or homework into clear explanations, quizzes and flashcards.",
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "USD"
-  }
-}
-</script>
+  <meta name="description" content="Yolvi — AI Study Tutor. Turn anything into explanations, quizzes and flashcards." />
+  <title>Yolvi — AI Study Tutor</title>
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Yolvi%22%2C%22short_name%22%3A%22Yolvi%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230a0a14%22%2C%22theme_color%22%3A%22%236366f1%22%7D" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><defs><linearGradient id='p' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23a5b4fc'/><stop offset='100%25' stop-color='%236366f1'/></linearGradient><radialGradient id='s' cx='50%25' cy='50%25' r='50%25'><stop offset='0%25' stop-color='%23fde68a'/><stop offset='60%25' stop-color='%23fbbf24'/><stop offset='100%25' stop-color='%23f59e0b'/></radialGradient></defs><rect width='40' height='40' fill='%230a0a14' rx='9'/><g stroke='url(%23p)' stroke-width='3.6' stroke-linecap='round' stroke-linejoin='round' fill='none'><path d='M11.5 11.5 L20 20'/><path d='M28.5 11.5 L20 20'/><path d='M20 20 L20 30'/></g><circle cx='20' cy='20' r='3.6' fill='url(%23s)'/></svg>" />
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -64,10 +27,11 @@
   </style>
 </head>
 <body>
- <div id="root"></div>
-
-<script type="text/babel" data-presets="react">
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
 const { useState, useRef, useEffect } = React;
+
+
 // ═══════════════════════════════════════════════════════════════
 // YOLVI LEARN — AI Study Tutor
 // Tagline: "Turn anything into explanations, quizzes & flashcards"
@@ -108,17 +72,52 @@ You generate exactly {COUNT} questions.
 You match the user's language.
 You include the "questions" key. You NEVER include a "cards" key.
 
-DEFAULT: just generate the quiz. Be helpful — if you can reasonably guess what the user means, just do it.
+Be tolerant of imperfect user input:
+- Understand minor typos, e.g. "abou" means "about", "quizz" means "quiz".
+- Ignore helper phrases such as "quiz about", "test about", "make a quiz about", "can you quiz me on".
+- Extract the real study topic from the user request.
+
+DEFAULT: generate the quiz directly.
+
+If the topic is broad, create a general overview quiz.
+Examples:
+- "WW2" means a general World War II quiz.
+- "quiz about WW2" means a general World War II quiz.
+- "quiz abou WW2" means a general World War II quiz.
+- "history" means a broad history quiz.
+- "biology" means a broad biology quiz.
+- "math" means a broad math quiz.
+- "English grammar" means an English grammar quiz.
+
+If {COUNT} is high, such as 15 or 20, spread the questions across the main subtopics instead of asking for more detail.
+For example, 20 questions about WW2 should cover causes, major events, countries, leaders, battles, Holocaust, home front, end of war, and consequences.
 
 ONLY ask for clarification when ALL of these are true:
-1) The user's input is a single ambiguous word with multiple very different meanings (e.g. "Mercury" = planet/element/god; "Apple" = fruit/company; bare "Škoda" = car/club/word)
-2) Picking the wrong meaning would make the quiz useless
-3) The input is NOT already specific (e.g. "Apple Inc.", "Škoda Auto", "WW2 causes", "Spanish verbs", "Photosynthesis" — these are all specific enough, never ask about them)
+1) The user's input is basically a single ambiguous term.
+2) The term has multiple unrelated meanings.
+3) Picking one meaning would likely make the quiz useless.
+4) There is not enough context to infer the intended meaning.
+
+Examples where you MAY ask:
+- "Mercury" = planet / chemical element / Roman god
+- "Apple" = fruit / company
+- "Java" = programming language / island / coffee
+
+Examples where you MUST NOT ask:
+- "WW2"
+- "quiz about WW2"
+- "quiz abou WW2"
+- "make a quiz about WW2"
+- "photosynthesis"
+- "Spanish verbs"
+- "history"
+- "biology"
+- "math"
+- "English grammar"
+- "French food vocabulary"
 
 When you DO ask, reply with this JSON:
 {"needsClarification":true, "message":"Question in user's language asking what they meant.", "suggestions":["topic 1","topic 2","topic 3"]}
-
-Two-or-more-word topics are almost always specific enough — generate the quiz.
 
 Output JSON only. No prose, no markdown, no code fences.`;
 
@@ -130,19 +129,53 @@ The JSON has this exact shape:
 You generate exactly {COUNT} flashcards.
 You match the user's language.
 You include the "cards" key. You NEVER include a "questions" key.
-Each card has only "front" and "back". No options, no answers list, no multiple choice.
+Each card has only "front" and "back". No options, no multiple choice.
 
-DEFAULT: just generate the flashcards. Be helpful — if you can reasonably guess what the user means, just do it.
+Be tolerant of imperfect user input:
+- Understand minor typos, e.g. "abou" means "about", "flaschards" means "flashcards", "flascards" means "flashcards".
+- Ignore helper phrases such as "flashcards about", "cards about", "make flashcards about".
+- Extract the real study topic from the user request.
+
+DEFAULT: generate the flashcards directly.
+
+If the topic is broad, create general overview flashcards.
+Examples:
+- "WW2" means general World War II flashcards.
+- "flashcards about WW2" means general World War II flashcards.
+- "flashcards abou WW2" means general World War II flashcards.
+- "history" means broad history flashcards.
+- "biology" means broad biology flashcards.
+- "math" means broad math flashcards.
+- "English grammar" means English grammar flashcards.
+
+If {COUNT} is high, such as 15, 20, or 25, spread the flashcards across the main subtopics instead of asking for more detail.
 
 ONLY ask for clarification when ALL of these are true:
-1) The user's input is a single ambiguous word with multiple very different meanings (e.g. "Mercury", bare "Škoda")
-2) Picking the wrong meaning would make the flashcards useless
-3) The input is NOT already specific (e.g. "French food vocabulary", "Photosynthesis steps", "Škoda Auto" — these are all specific enough, never ask about them)
+1) The user's input is basically a single ambiguous term.
+2) The term has multiple unrelated meanings.
+3) Picking one meaning would likely make the flashcards useless.
+4) There is not enough context to infer the intended meaning.
+
+Examples where you MAY ask:
+- "Mercury" = planet / chemical element / Roman god
+- "Apple" = fruit / company
+- "Java" = programming language / island / coffee
+
+Examples where you MUST NOT ask:
+- "WW2"
+- "flashcards about WW2"
+- "flashcards abou WW2"
+- "make flashcards about WW2"
+- "photosynthesis"
+- "Spanish verbs"
+- "history"
+- "biology"
+- "math"
+- "English grammar"
+- "French food vocabulary"
 
 When you DO ask, reply with this JSON:
 {"needsClarification":true, "message":"Question in user's language asking what they meant.", "suggestions":["topic 1","topic 2","topic 3"]}
-
-Two-or-more-word topics are almost always specific enough — generate the flashcards.
 
 Output JSON only. No prose, no markdown, no code fences.`;
 
@@ -190,6 +223,46 @@ function formatDate(ts) {
 }
 function escHtml(t) {
   return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Normalize the user's study request:
+// - fix common typos (abou → about, quizz → quiz, flaschards → flashcards, etc.)
+// - strip helper phrases ("quiz about", "make me a quiz about", "test me on", "flashcards about", …)
+// so the AI receives just the actual topic. Falls back to original text if regexes don't match.
+function normalizeStudyRequest(text) {
+  return String(text || "")
+    .trim()
+    .replace(/\babou\b/gi, "about")
+    .replace(/\bquizz\b/gi, "quiz")
+    .replace(/\bflaschards\b/gi, "flashcards")
+    .replace(/\bflascards\b/gi, "flashcards")
+    .replace(/\bstuddy\b/gi, "study")
+    .replace(/^(please\s+)?(can\s+you\s+)?(make\s+|create\s+|generate\s+)?(me\s+)?(a\s+)?(quiz|test)\s+(about|on|for)\s+/i, "")
+    .replace(/^(please\s+)?(can\s+you\s+)?(quiz|test)\s+(me\s+)?(about|on)\s+/i, "")
+    .replace(/^(please\s+)?(can\s+you\s+)?(make\s+|create\s+|generate\s+)?(some\s+)?(flashcards|flashcard|cards)\s+(about|on|for)\s+/i, "")
+    .replace(/^(please\s+)?(can\s+you\s+)?(help\s+me\s+study\s+)?(about|on)\s+/i, "")
+    .trim();
+}
+
+// Decide whether to actually surface the AI's "needsClarification" response to the user.
+// Most broad study topics (WW2, biology, math, photosynthesis, Spanish verbs, ...) should NEVER
+// trigger the clarify UI — the app forces a regenerate instead. Only a small allow-list of
+// truly ambiguous single words is allowed through.
+function shouldAllowClarification(topic) {
+  const t = String(topic || "").trim().toLowerCase();
+
+  // Only allow clarification for a small set of truly ambiguous single-word topics.
+  const ambiguousSingleTerms = [
+    "mercury",
+    "apple",
+    "java",
+    "python",
+    "ruby",
+    "go",
+    "swift"
+  ];
+
+  return ambiguousSingleTerms.includes(t);
 }
 
 // Robust JSON extractor — pulls out the FIRST valid JSON object from a possibly-messy AI reply.
@@ -240,36 +313,53 @@ function renderMd(text) {
   return html;
 }
 
+// ── Logo: Yolvi brand mark (Y + spark + orbital ring) ─────────
+// Geometric Y carrying a warm spark — the "aha!" moment of understanding.
+// Tuned to render crisply from 16 px favicon up to 1024 px app icon.
+const Logo = ({ size = 36, glow = false }) => {
+  // Each Logo instance gets unique gradient IDs so multiple logos
+  // on the same page don't share defs.
+  const uid = useRef("ylv" + Math.random().toString(36).slice(2, 8)).current;
+  return (
+    <div style={{ position: "relative", display: "inline-flex" }}>
+      <svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+        <defs>
+          <linearGradient id={`${uid}-p`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#a5b4fc"/>
+            <stop offset="100%" stopColor="#6366f1"/>
+          </linearGradient>
+          <radialGradient id={`${uid}-s`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fde68a"/>
+            <stop offset="60%" stopColor="#fbbf24"/>
+            <stop offset="100%" stopColor="#f59e0b"/>
+          </radialGradient>
+          <linearGradient id={`${uid}-h`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32"/>
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        {/* Outer aura ring — knowledge orbit */}
+        <circle cx="20" cy="20" r="17.5" stroke={`url(#${uid}-p)`} strokeWidth="1.4" fill="none" opacity="0.28"/>
+        {/* Bold Y mark */}
+        <g stroke={`url(#${uid}-p)`} strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <path d="M11.5 11.5 L20 20"/>
+          <path d="M28.5 11.5 L20 20"/>
+          <path d="M20 20 L20 30"/>
+        </g>
+        {/* Subtle highlight on upper Y arms */}
+        <g stroke={`url(#${uid}-h)`} strokeWidth="1.2" strokeLinecap="round" fill="none" opacity="0.55">
+          <path d="M12 11.7 L19.6 19.4"/>
+          <path d="M28 11.7 L20.4 19.4"/>
+        </g>
+        {/* Center spark — moment of understanding */}
+        <circle cx="20" cy="20" r="3.6" fill={`url(#${uid}-s)`}/>
+        <circle cx="20" cy="20" r="3.6" fill="none" stroke="#ffffff" strokeWidth="0.4" opacity="0.7"/>
+      </svg>
+      {glow && <div style={{ position:"absolute",inset:-8,background:"radial-gradient(circle,rgba(99,102,241,0.5) 0%,transparent 70%)",borderRadius:"50%",pointerEvents:"none",filter:"blur(8px)" }}/>}
+    </div>
+  );
+};
 
-const Logo = ({ size = 36, glow = false }) => (
-  <div style={{ position: "relative", display: "inline-flex", width: size, height: size }}>
-    <img
-      src="./icon.png?v=4"
-      alt="Yolvi logo"
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "10px",
-        objectFit: "cover",
-        display: "block",
-        position: "relative",
-        zIndex: 1
-      }}
-    />
-    {glow && (
-      <div
-        style={{
-          position: "absolute",
-          inset: -8,
-          background: "radial-gradient(circle,rgba(99,102,241,0.5) 0%,transparent 70%)",
-          borderRadius: "50%",
-          pointerEvents: "none",
-          filter: "blur(8px)"
-        }}
-      />
-    )}
-  </div>
-);
 const Dots = ({ color = "#818cf8" }) => (
   <div style={{ display:"flex",gap:5,padding:"4px 0" }}>
     {[0,1,2].map(i=><span key={i} style={{ width:7,height:7,borderRadius:"50%",background:color,display:"inline-block",opacity:0.7,animation:"ybounce 1.2s infinite",animationDelay:`${i*0.2}s` }}/>)}
@@ -932,8 +1022,11 @@ function Yolvi() {
   };
 
   const send = async (overrideText, fromClarification) => {
-    // Allow callers (like ClarifyView suggestions) to send directly without going through input state
-    const text = (typeof overrideText === "string" ? overrideText : input).trim();
+    // Allow callers (like ClarifyView suggestions) to send directly without going through input state.
+    // Run through normalizeStudyRequest so common typos and helper phrases ("quiz abou WW2",
+    // "make a quiz about photosynthesis") are reduced to the actual study topic before sending.
+    const rawText = (typeof overrideText === "string" ? overrideText : input).trim();
+    const text = normalizeStudyRequest(rawText);
     if (!text || loading) return;
 
     // Snapshot the mode at the moment of sending so async state changes can't switch us mid-flight.
@@ -963,8 +1056,8 @@ function Yolvi() {
         // If we got the wrong shape, retry ONCE with a stronger reminder.
         if (wrongShape) {
           const reminder = sendMode === "quiz"
-            ? "CRITICAL: respond with a 'questions' array (multiple choice quiz). DO NOT respond with a 'cards' array."
-            : "CRITICAL: respond with a 'cards' array (front/back flashcards). DO NOT respond with a 'questions' array.";
+            ? `CRITICAL: respond with a 'questions' array (multiple choice quiz). DO NOT respond with a 'cards' array. The topic "${text}" is specific enough — do NOT ask for clarification. Generate exactly ${quizCount} questions; if the topic is broad (e.g. WW2, history, biology), spread the questions across the main subtopics — for example a 20-question WW2 quiz should cover causes, major events, leaders, battles, Holocaust, home front, end of war, and consequences.`
+            : `CRITICAL: respond with a 'cards' array (front/back flashcards). DO NOT respond with a 'questions' array. The topic "${text}" is specific enough — do NOT ask for clarification. Generate exactly ${flashCount} flashcards; if the topic is broad (e.g. WW2, history, biology), spread the flashcards across the main subtopics — for example 20 WW2 flashcards should cover causes, major events, leaders, battles, Holocaust, home front, end of war, and consequences.`;
           try {
             reply = await generateOnce(sendMode, text, reminder);
             parsed = extractJson(reply);
@@ -975,7 +1068,46 @@ function Yolvi() {
 
         // Now decide what to render
         if (parsed && parsed.needsClarification) {
-          setMessages(prev => [...prev, { role:"assistant", clarify: parsed, mode: sendMode, topic: text }]);
+          // Do not allow the AI to ask for clarification for normal broad study topics.
+          // Broad topics like WW2, history, biology, math, photosynthesis, etc. should generate directly.
+          // Only a small allow-list of truly ambiguous single words (Mercury, Apple, Java, ...) is allowed.
+          if (shouldAllowClarification(text)) {
+            setMessages(prev => [...prev, { role:"assistant", clarify: parsed, mode: sendMode, topic: text }]);
+          } else {
+            const forceReminder = sendMode === "quiz"
+              ? `The topic "${text}" is specific enough. Do NOT ask for clarification. Generate exactly ${quizCount} multiple-choice questions now. If the topic is broad (e.g. WW2, history, biology), create a general overview quiz that spreads across the main subtopics — for example a 20-question WW2 quiz should cover causes, major events, leaders, battles, Holocaust, home front, end of war, and consequences. Output JSON only with a questions array.`
+              : `The topic "${text}" is specific enough. Do NOT ask for clarification. Generate exactly ${flashCount} flashcards now. If the topic is broad (e.g. WW2, history, biology), create general overview flashcards that spread across the main subtopics — for example 20 WW2 flashcards should cover causes, major events, leaders, battles, Holocaust, home front, end of war, and consequences. Output JSON only with a cards array.`;
+
+            try {
+              reply = await generateOnce(sendMode, text, forceReminder);
+              parsed = extractJson(reply);
+
+              const retryHasQuiz = parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0;
+              const retryHasCards = parsed && Array.isArray(parsed.cards) && parsed.cards.length > 0;
+
+              if (sendMode === "quiz" && retryHasQuiz) {
+                const cleanData = { topic: parsed.topic || text, questions: parsed.questions };
+                setMessages(prev => [...prev, { role:"assistant", content:reply, structured:cleanData, mode:"quiz", topic:text }]);
+              } else if (sendMode === "flashcards" && retryHasCards) {
+                const cleanData = { topic: parsed.topic || text, cards: parsed.cards };
+                setMessages(prev => [...prev, { role:"assistant", content:reply, structured:cleanData, mode:"flashcards", topic:text }]);
+              } else {
+                setMessages(prev => [...prev, {
+                  role:"assistant",
+                  retryable: { mode: sendMode, text },
+                  content: sendMode === "quiz"
+                    ? "⚠️ Couldn't generate a proper quiz this time. Try again."
+                    : "⚠️ Couldn't generate proper flashcards this time. Try again."
+                }]);
+              }
+            } catch (e) {
+              setMessages(prev => [...prev, {
+                role:"assistant",
+                retryable: { mode: sendMode, text },
+                content: "⚠️ The server had trouble generating this. Try again."
+              }]);
+            }
+          }
         } else if (sendMode === "quiz" && hasQuiz) {
           // Strip any cards/flashcard fields so the renderer cannot accidentally show flashcards too.
           const cleanData = { topic: parsed.topic, questions: parsed.questions };
