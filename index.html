@@ -931,6 +931,22 @@ function FlashcardsView({ data, onClose }) {
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // MAIN APP
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SVG mode icons â€” replace emoji glyphs (which don't render on all devices).
+const MODE_ICON_PATHS = {
+  explain: '<path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7c.6.4 1 1 1 1.7v.6h6v-.6c0-.7.4-1.3 1-1.7A7 7 0 0012 2z"/>',
+  quiz: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  flashcards: '<rect x="3" y="6" width="13" height="14" rx="2"/><path d="M8 6V4a2 2 0 012-2h9a2 2 0 012 2v13a2 2 0 01-2 2h-3"/>',
+  summarize: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
+  homework: '<path d="M4 19.5A2.5 2.5 0 016.5 17H20M19.5 22h-13A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2H20v20"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="13" y2="11"/>'
+};
+function ModeIcon({ id, size = 22, color = "#a5b4fc" }) {
+  const html = MODE_ICON_PATHS[id] || "";
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: html }}/>
+  );
+}
+
+
 function Yolvi() {
   const [authChecked, setAuthChecked] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -1351,11 +1367,11 @@ function Yolvi() {
   if (!currentUser) return <AuthScreen onAuth={handleAuth} onGuest={handleGuest}/>;
 
   const modes = [
-    { id:"explain", icon:"đź’ˇ", title:"Explain", desc:"Understand any topic" },
-    { id:"quiz", icon:"đź“ť", title:"Quiz me", desc:"Test your knowledge" },
-    { id:"flashcards", icon:"đźŹ", title:"Flashcards", desc:"Memorize key concepts" },
-    { id:"summarize", icon:"đź“‹", title:"Summarize", desc:"Notes into key points" },
-    { id:"homework", icon:"đź“š", title:"Homework", desc:"Step-by-step help" },
+    { id:"explain", title:"Explain", desc:"Understand any topic" },
+    { id:"quiz", title:"Quiz me", desc:"Test your knowledge" },
+    { id:"flashcards", title:"Flashcards", desc:"Memorize key concepts" },
+    { id:"summarize", title:"Summarize", desc:"Notes into key points" },
+    { id:"homework", title:"Homework", desc:"Step-by-step help" },
   ];
 
   const greeting = (() => {
@@ -1590,7 +1606,7 @@ function Yolvi() {
                 border:"1px solid rgba(99,102,241,0.3)",borderRadius:13,
                 cursor:"pointer",display:"flex",alignItems:"center",gap:13,textAlign:"left",fontFamily:"'Inter',sans-serif"
               }}>
-                <div style={{ width:38,height:38,borderRadius:10,background:"rgba(99,102,241,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0 }}>{lastSet.mode==="quiz"?"đź“ť":"đźŹ"}</div>
+                <div style={{ width:38,height:38,borderRadius:10,background:"rgba(99,102,241,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0 }}><ModeIcon id={lastSet.mode} size={18}/></div>
                 <div style={{ flex:1,minWidth:0 }}>
                   <div style={{ fontSize:13.5,fontWeight:600,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{lastSet.topic}</div>
                   <div style={{ fontSize:11,color:"#a5b4fc",marginTop:2 }}>
@@ -1610,7 +1626,7 @@ function Yolvi() {
                 cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",fontFamily:"'Inter',sans-serif",
                 position:"relative"
               }}>
-                <div style={{ width:44,height:44,borderRadius:11,background:"rgba(99,102,241,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}>{m.icon}</div>
+                <div style={{ width:44,height:44,borderRadius:11,background:"rgba(99,102,241,0.1)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}><ModeIcon id={m.id} size={22}/></div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14.5,fontWeight:600,color:"#fff",marginBottom:2 }}>
                     {m.title}
@@ -1635,7 +1651,7 @@ function Yolvi() {
             {messages.length === 0 && (
               <div>
                 <div style={{ textAlign:"center",padding:"40px 20px 20px" }}>
-                  <div style={{ fontSize:42,marginBottom:14 }}>{modes.find(m=>m.id===mode)?.icon}</div>
+                  <div style={{ fontSize:42,marginBottom:14 }}><ModeIcon id={mode} size={36}/></div>
                   <div style={{ fontSize:16,fontWeight:600,color:"#fff",marginBottom:6 }}>{modes.find(m=>m.id===mode)?.title} mode</div>
                   <div style={{ fontSize:13,color:"#9ca3af",lineHeight:1.6,maxWidth:280,margin:"0 auto" }}>
                     {mode === "explain" && "Type a topic to get a clear explanation with examples."}
@@ -1679,7 +1695,7 @@ function Yolvi() {
                           padding:"11px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",
                           borderRadius:11,display:"flex",alignItems:"center",gap:10
                         }}>
-                          <div style={{ width:30,height:30,borderRadius:8,background: mode==="quiz" ? "rgba(99,102,241,0.1)" : "rgba(251,191,36,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0 }}>{mode==="quiz"?"đź“ť":"đźŹ"}</div>
+                          <div style={{ width:30,height:30,borderRadius:8,background: mode==="quiz" ? "rgba(99,102,241,0.1)" : "rgba(251,191,36,0.08)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0 }}><ModeIcon id={mode} size={14}/></div>
                           <div onClick={()=>openStudySet(set)} style={{ flex:1,minWidth:0,cursor:"pointer" }}>
                             <div style={{ fontSize:12.5,fontWeight:600,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{set.topic}</div>
                             <div style={{ fontSize:10,color:"#6b7280",marginTop:1 }}>{mode==="quiz"?`${set.data.questions?.length||0} questions`:`${set.data.cards?.length||0} cards`} Â· saved {formatDate(set.savedAt)}</div>
